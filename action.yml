@@ -1,0 +1,35 @@
+name: 'Discord Webhook (GitHub / Gitea)'
+description: 'Send a build-status embed to a Discord webhook from GitHub Actions or Gitea Actions.'
+author: 'jum (JS/Node rewrite)'
+branding:
+  icon: 'message-circle'
+  color: 'blue'
+
+inputs:
+  status:
+    description: 'Job status, e.g. ${{ job.status }} (success, failure, cancelled).'
+    required: true
+  webhook_url:
+    description: 'Discord webhook URL. Space-separate multiple URLs to notify several channels.'
+    required: true
+  token:
+    description: >
+      Optional API token used only to look up the pull request title on PR events.
+      Use ${{ secrets.GITHUB_TOKEN }} on GitHub, or a Gitea access token on Gitea.
+      If omitted, the merge commit's own subject line is used instead.
+    required: false
+  platform:
+    description: "'auto' (default), 'github', or 'gitea'. Auto-detects from GITHUB_SERVER_URL."
+    required: false
+    default: 'auto'
+  username:
+    description: 'Override the webhook bot username shown in Discord.'
+    required: false
+  avatar_url:
+    description: 'Override the avatar image shown in Discord.'
+    required: false
+    default: 'https://github.com/actions.png'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
