@@ -7,7 +7,7 @@ branding:
 
 inputs:
   status:
-    description: 'Job status, e.g. ${{ job.status }} (success, failure, cancelled).'
+    description: 'Job status: pass the job.status context value (success, failure, cancelled).'
     required: true
   webhook_url:
     description: 'Discord webhook URL. Space-separate multiple URLs to notify several channels.'
@@ -15,7 +15,7 @@ inputs:
   token:
     description: >
       Optional API token used only to look up the pull request title on PR events.
-      Use ${{ secrets.GITHUB_TOKEN }} on GitHub, or a Gitea access token on Gitea.
+      Use the GITHUB_TOKEN secret on GitHub, or the GITEA_TOKEN secret on Gitea.
       If omitted, the merge commit's own subject line is used instead.
     required: false
   platform:
