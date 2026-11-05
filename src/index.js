@@ -1,5 +1,6 @@
 const core = require('@actions/core');
 const exec = require('@actions/exec');
+const fs = require('fs');
 
 // --- status -> embed color / label -------------------------------------------------
 
@@ -19,12 +20,79 @@ function statusInfo(status) {
 // GitHub or Gitea without needing extra permissions.
 
 async function gitLog(format, sha) {
-  let output = '';
-  await exec.exec('git', ['log', '-1', sha, `--pretty=${format}`], {
-    listeners: { stdout: (data) => { output += data.toString(); } },
-    silent: true,
-  });
-  return output.trim();
+  let stdout = '';
+  let stderr = '';
+  // safe.directory=* avoids "dubious ownership" failures (exit 128) when the job runs
+  // in a container whose workspace is owned by a different user.
+  const code = await exec.exec(
+    'git',
+    ['-c', 'safe.directory=*', 'log', '-1', sha, `--pretty=${format}`],
+    {
+      listeners: {
+        stdout: (d) => { stdout += d.toString(); },
+        stderr: (d) => { stderr += d.toString(); },
+      },
+      silent: true,
+      ignoreReturnCode: true,
+    },
+  );
+  if (code !== 0) {
+    throw new Error(`git log exited with code ${code}: ${stderr.trim() || '(no output)'}`);
+  }
+  return stdout.trim();
+}
+
+// Reads the webhook event payload both GitHub and Gitea write to GITHUB_EVENT_PATH.
+// Used only when git cannot provide the commit info (e.g. no checkout step).
+function readEventPayload() {
+  try {
+    const p = process.env.GITHUB_EVENT_PATH;
+    if (p && fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (err) {
+    core.warning(`Could not read event payload: ${err.message}`);
+  }
+  return {};
+}
+
+function commitInfoFromPayload(payload) {
+  const hc = payload.head_commit || (Array.isArray(payload.commits) && payload.commits.slice(-1)[0]);
+  if (hc && hc.message) {
+    const [subject, ...rest] = String(hc.message).split(/\r?\n/);
+    return {
+      authorName: (hc.author && (hc.author.name || hc.author.username)) || 'unknown',
+      committerName: (hc.committer && (hc.committer.name || hc.committer.username)) || 'unknown',
+      subject,
+      body: rest.join('\n').trim(),
+    };
+  }
+  const who =
+    (payload.pull_request && payload.pull_request.user && payload.pull_request.user.login) ||
+    (payload.sender && (payload.sender.login || payload.sender.username)) ||
+    'unknown';
+  return {
+    authorName: who,
+    committerName: who,
+    subject: (payload.pull_request && payload.pull_request.title) || '(no commit info available)',
+    body: '',
+  };
+}
+
+async function getCommitInfo(sha) {
+  try {
+    return {
+      authorName: await gitLog('%aN', sha),
+      committerName: await gitLog('%cN', sha),
+      subject: await gitLog('%s', sha),
+      body: await gitLog('%b', sha),
+    };
+  } catch (err) {
+    core.warning(
+      `${err.message}\n` +
+        'Falling back to the event payload for commit info. ' +
+        'Add a checkout step (actions/checkout) before this action for full commit details.',
+    );
+    return commitInfoFromPayload(readEventPayload());
+  }
 }
 
 // --- platform detection ---------------------------------------------------------------
@@ -122,10 +190,10 @@ async function run() {
 
   const { color: embedColor, label: statusMessage } = statusInfo(status);
 
-  const authorName = await gitLog('%aN', sha);
-  const committerName = await gitLog('%cN', sha);
-  let commitSubject = await gitLog('%s', sha);
-  let commitMessage = await gitLog('%b', sha);
+  const info = await getCommitInfo(sha);
+  const { authorName, committerName } = info;
+  let commitSubject = info.subject;
+  let commitMessage = info.body;
 
   const credits =
     authorName === committerName

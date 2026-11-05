@@ -59,9 +59,11 @@ token can't reach, generate a personal/repo access token (Settings → Applicati
 Generate Token) with `pull-requests: read`, store it as a repo secret, and reference that
 secret instead.
 
-> **Note:** this action reads commit author/subject/body via `git log`, so it must run
-> *after* a checkout step (`actions/checkout` on GitHub, or the equivalent on Gitea) in the
-> same job.
+> **Note:** the action reads commit author/subject/body via `git log`, so add a checkout step
+> (`actions/checkout`) before it for full details. If git fails (no checkout, shallow clone
+> missing the commit, etc.) the action logs the real git error as a warning and falls back to
+> the event payload (`GITHUB_EVENT_PATH`), which still provides author and message on push
+> events and the title on pull requests.
 
 ## Inputs
 
